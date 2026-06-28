@@ -1,0 +1,26 @@
+# Node.js
+node_modules/
+dist/
+.env
+
+# IDE / Editor
+.kilocode/
+.vscode/
+.idea/
+
+# Binaries
+backend/bin/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+.venv/
+venv/
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
