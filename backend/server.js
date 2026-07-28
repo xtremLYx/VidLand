@@ -372,6 +372,17 @@ async function fetchFallbackYouTubeMetadata(youtubeUrl) {
   return { title, thumbnail, platform: "YouTube", duration, formats: selectedFormats };
 }
 
+// Setup cookies file support for YouTube age-restricted / datacenter IP bypass
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+if (process.env.YOUTUBE_COOKIES) {
+  try {
+    fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES, 'utf8');
+    console.log('Successfully saved YOUTUBE_COOKIES environment variable to cookies.txt');
+  } catch (e) {
+    console.error('Failed to write YOUTUBE_COOKIES:', e.message);
+  }
+}
+
 // API Routes
 app.post('/api/fetch', apiLimiter, async (req, res) => {
   const { url } = req.body;
@@ -387,16 +398,21 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
     await ensureYtDlp();
     const ytDlp = new YTDlpWrap(ytDlpPath);
     
-    // Run yt-dlp metadata extraction with android_vr primary player client to bypass cloud IP blocks
-    const stdout = await ytDlp.execPromise([
+    const ytArgs = [
       url,
       "-J",
       "--no-playlist",
       "--no-warnings",
-      "--geo-bypass",
-      "--extractor-args",
-      "youtube:player_client=android_vr,web"
-    ]);
+      "--geo-bypass"
+    ];
+
+    if (fs.existsSync(cookiesPath)) {
+      ytArgs.push("--cookies", cookiesPath);
+    } else {
+      ytArgs.push("--extractor-args", "youtube:player_client=android_vr,web");
+    }
+
+    const stdout = await ytDlp.execPromise(ytArgs);
     
     const data = JSON.parse(stdout);
     const title = data.title || "Video Download";
@@ -424,7 +440,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       if (errMessage.toLowerCase().includes("private")) {
         res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
       } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
-        res.status(403).json({ detail: "This video is age-restricted or requires account login." });
+        res.status(403).json({ detail: "This video is age-restricted or requires account login. To enable restricted videos on Render, add a YOUTUBE_COOKIES environment variable or cookies.txt file." });
       } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
         res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
       } else {
