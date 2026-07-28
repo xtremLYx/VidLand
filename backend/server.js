@@ -369,7 +369,15 @@ if (process.env.YOUTUBE_COOKIES) {
     console.error('Failed to write YOUTUBE_COOKIES:', e.message);
 // Fast & robust ytdl-core metadata parser for YouTube
 async function fetchYtdlCoreMetadata(youtubeUrl) {
-  const info = await ytdl.getInfo(youtubeUrl);
+  const options = {
+    requestOptions: {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    }
+  };
+  const info = await ytdl.getInfo(youtubeUrl, options);
   const details = info.videoDetails;
   const rawFormats = info.formats || [];
 
