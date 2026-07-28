@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import YTDlpWrapPackage from 'yt-dlp-wrap';
 import { spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
+import ytdl from '@distube/ytdl-core';
 const YTDlpWrap = YTDlpWrapPackage.default || YTDlpWrapPackage;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -366,7 +367,84 @@ if (process.env.YOUTUBE_COOKIES) {
     console.log('Successfully saved YOUTUBE_COOKIES environment variable to cookies.txt');
   } catch (e) {
     console.error('Failed to write YOUTUBE_COOKIES:', e.message);
+// Fast & robust ytdl-core metadata parser for YouTube
+async function fetchYtdlCoreMetadata(youtubeUrl) {
+  const info = await ytdl.getInfo(youtubeUrl);
+  const details = info.videoDetails;
+  const rawFormats = info.formats || [];
+
+  const title = details.title || "Video Download";
+  const thumbnail = details.thumbnails?.pop()?.url || "";
+  const duration = parseInt(details.lengthSeconds || "0", 10);
+
+  const selectedFormats = [];
+  const heightMap = new Map();
+  let bestAudio = null;
+
+  for (const fmt of rawFormats) {
+    if (!fmt.url) continue;
+
+    const isVideo = fmt.hasVideo;
+    const isAudio = fmt.hasAudio;
+
+    if (isAudio && (!bestAudio || (parseInt(fmt.audioBitrate || fmt.bitrate || 0) > parseInt(bestAudio.audioBitrate || bestAudio.bitrate || 0)))) {
+      bestAudio = fmt;
+    }
+    if (isVideo && fmt.height) {
+      if (!heightMap.has(fmt.height)) {
+        heightMap.set(fmt.height, fmt);
+      }
+    }
   }
+
+  const audioUrl = bestAudio ? bestAudio.url : null;
+  const audioSize = bestAudio ? parseInt(bestAudio.contentLength || "0", 10) : 0;
+  const sortedHeights = Array.from(heightMap.keys()).sort((a, b) => b - a);
+
+  sortedHeights.forEach((height, idx) => {
+    const fmt = heightMap.get(height);
+    const isVideoOnly = !fmt.hasAudio;
+    const isMaxQuality = (idx === 0);
+
+    let qualityBadge = `${height}p`;
+    if (height >= 2160) qualityBadge = `${height}p (4K Ultra HD)`;
+    else if (height === 1440) qualityBadge = `${height}p (2K Quad HD)`;
+    else if (height === 1080) qualityBadge = `1080p (Full HD)`;
+
+    const label = isMaxQuality ? `MP4 ${qualityBadge} 🔥 [Max Quality]` : `MP4 ${qualityBadge}`;
+    const rawVideoSize = parseInt(fmt.contentLength || "0", 10);
+    const totalCalculatedSize = rawVideoSize > 0 
+      ? (isVideoOnly ? rawVideoSize + audioSize : rawVideoSize) 
+      : (audioSize > 0 && isVideoOnly ? audioSize : null);
+
+    selectedFormats.push({
+      label,
+      resolution: `${height}p`,
+      ext: "mp4",
+      format_id: fmt.itag?.toString() || "",
+      url: fmt.url,
+      filesize: totalCalculatedSize,
+      audioUrl: isVideoOnly ? audioUrl : null
+    });
+  });
+
+  if (bestAudio) {
+    selectedFormats.push({
+      label: "MP3 Audio (128kbps)",
+      resolution: "Audio",
+      ext: "mp3",
+      format_id: bestAudio.itag?.toString() || "",
+      url: bestAudio.url,
+      filesize: parseInt(bestAudio.contentLength || "0", 10) || null,
+      audioUrl: null
+    });
+  }
+
+  if (selectedFormats.length === 0) {
+    throw new Error("No playable formats found via ytdl-core.");
+  }
+
+  return { title, thumbnail, platform: "YouTube", duration, formats: selectedFormats };
 }
 
 // API Routes
@@ -381,57 +459,62 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
   }
   
   try {
-    await ensureYtDlp();
-    const ytDlp = new YTDlpWrap(ytDlpPath);
-    
-    const ytArgs = [
-      url,
-      "-J",
-      "--no-playlist",
-      "--no-warnings",
-      "--geo-bypass",
-      "--js-runtimes", `node:${process.execPath}`,
-      "--extractor-args",
-      "youtube:player_client=android_vr,android,web"
-    ];
-
-    if (fs.existsSync(cookiesPath)) {
-      ytArgs.push("--cookies", cookiesPath);
-    }
-
-    const stdout = await ytDlp.execPromise(ytArgs);
-    
-    const data = JSON.parse(stdout);
-    const title = data.title || "Video Download";
-    const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
-    const platform = "YouTube";
-    const duration = data.duration || 0;
-    
-    const formats = extractFormats(data, url);
-    
-    res.json({
-      title,
-      thumbnail,
-      platform,
-      duration,
-      formats
-    });
-  } catch (error) {
-    console.error("Error executing yt-dlp, attempting fallback parser...", error.message);
+    // Primary: Fast & reliable ytdl-core metadata parser
+    const ytdlData = await fetchYtdlCoreMetadata(url);
+    return res.json(ytdlData);
+  } catch (ytdlError) {
+    console.error("ytdl-core parser error, attempting yt-dlp fallback...", ytdlError.message);
     try {
-      const fallbackData = await fetchFallbackYouTubeMetadata(url);
-      return res.json(fallbackData);
-    } catch (fallbackError) {
-      console.error("Fallback parser failed:", fallbackError.message);
-      const errMessage = error.message || "";
-      if (errMessage.toLowerCase().includes("private")) {
-        res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
-      } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
-        res.status(403).json({ detail: "This video is age-restricted or requires account login. To enable restricted videos on Render, add a YOUTUBE_COOKIES environment variable or cookies.txt file." });
-      } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
-        res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
-      } else {
-        res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
+      await ensureYtDlp();
+      const ytDlp = new YTDlpWrap(ytDlpPath);
+      
+      const ytArgs = [
+        url,
+        "-J",
+        "--no-playlist",
+        "--no-warnings",
+        "--geo-bypass",
+        "--js-runtimes", `node:${process.execPath}`,
+        "--extractor-args",
+        "youtube:player_client=android_vr,android,web"
+      ];
+
+      if (fs.existsSync(cookiesPath)) {
+        ytArgs.push("--cookies", cookiesPath);
+      }
+
+      const stdout = await ytDlp.execPromise(ytArgs);
+      const data = JSON.parse(stdout);
+      const title = data.title || "Video Download";
+      const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
+      const platform = "YouTube";
+      const duration = data.duration || 0;
+      const formats = extractFormats(data, url);
+      
+      return res.json({
+        title,
+        thumbnail,
+        platform,
+        duration,
+        formats
+      });
+    } catch (error) {
+      console.error("Error executing yt-dlp, attempting native fallback parser...", error.message);
+      try {
+        const fallbackData = await fetchFallbackYouTubeMetadata(url);
+        return res.json(fallbackData);
+      } catch (fallbackError) {
+        console.error("Fallback parser failed:", fallbackError.message);
+        const errMessage = error.message || "";
+        if (errMessage.toLowerCase().includes("private")) {
+          res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
+        } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
+          res.status(403).json({ detail: "This video is age-restricted or requires account login." });
+        } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
+          res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
+        } else {
+          res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
+        }
       }
     }
   }
