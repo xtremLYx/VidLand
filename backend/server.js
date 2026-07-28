@@ -22,19 +22,26 @@ const isWindows = process.platform === 'win32';
 const ytDlpFilename = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
 const ytDlpPath = path.join(binDir, ytDlpFilename);
 
-// Ensure yt-dlp binary exists
+// Ensure yt-dlp binary exists & is updated to the latest release
 async function ensureYtDlp() {
   if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
   }
+  const downloader = YTDlpWrap.default || YTDlpWrap;
   if (!fs.existsSync(ytDlpPath)) {
     console.log(`yt-dlp not found at ${ytDlpPath}. Downloading latest release from GitHub...`);
-    // yt-dlp-wrap has a default export or is a class
-    const downloader = YTDlpWrap.default || YTDlpWrap;
     await downloader.downloadFromGithub(ytDlpPath);
     console.log('yt-dlp download complete!');
     if (!isWindows) {
       fs.chmodSync(ytDlpPath, 0o755); // make executable
+    }
+  } else {
+    try {
+      console.log("Ensuring latest yt-dlp binary version...");
+      const ytDlp = new YTDlpWrap(ytDlpPath);
+      await ytDlp.execPromise(["-U"]);
+    } catch (e) {
+      console.log("yt-dlp self-update status:", e.message);
     }
   }
 }
@@ -236,7 +243,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
     await ensureYtDlp();
     const ytDlp = new YTDlpWrap(ytDlpPath);
     
-    // Run yt-dlp metadata extraction with matching native player clients to handle age-restricted videos
+    // Run yt-dlp metadata extraction with player client fallbacks to handle YouTube restrictions
     const stdout = await ytDlp.execPromise([
       url,
       "-J",
@@ -244,7 +251,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-warnings",
       "--geo-bypass",
       "--extractor-args",
-      "youtube:player_client=android_vr,android,ios,mweb,tv"
+      "youtube:player_client=android,web,mweb,tv"
     ]);
     
     const data = JSON.parse(stdout);
