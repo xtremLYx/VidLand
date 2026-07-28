@@ -404,7 +404,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-playlist",
       "--no-warnings",
       "--geo-bypass",
-      "--geo-bypass-country", "IN"
+      "--geo-bypass-ip-block", "49.37.0.0/16"
     ];
 
     if (fs.existsSync(cookiesPath)) {
