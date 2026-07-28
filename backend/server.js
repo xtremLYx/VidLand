@@ -251,7 +251,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-warnings",
       "--geo-bypass",
       "--extractor-args",
-      "youtube:player_client=android,web,mweb,tv"
+      "youtube:player_client=android,web"
     ]);
     
     const data = JSON.parse(stdout);
