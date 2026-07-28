@@ -243,7 +243,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
     await ensureYtDlp();
     const ytDlp = new YTDlpWrap(ytDlpPath);
     
-    // Run yt-dlp metadata extraction with player client fallbacks to handle YouTube restrictions
+    // Run yt-dlp metadata extraction with android_vr primary player client to bypass cloud IP blocks
     const stdout = await ytDlp.execPromise([
       url,
       "-J",
@@ -251,7 +251,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-warnings",
       "--geo-bypass",
       "--extractor-args",
-      "youtube:player_client=android,web"
+      "youtube:player_client=android_vr,web"
     ]);
     
     const data = JSON.parse(stdout);
