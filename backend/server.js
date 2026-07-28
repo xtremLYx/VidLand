@@ -368,10 +368,8 @@ if (process.env.YOUTUBE_COOKIES) {
   } catch (e) {
     console.error('Failed to write YOUTUBE_COOKIES:', e.message);
 // Fast & robust ytdl-core metadata parser for YouTube
-const ytdlAgent = ytdl.createAgent();
-
 async function fetchYtdlCoreMetadata(youtubeUrl) {
-  const info = await ytdl.getInfo(youtubeUrl, { agent: ytdlAgent });
+  const info = await ytdl.getInfo(youtubeUrl);
   const details = info.videoDetails;
   const rawFormats = info.formats || [];
 
@@ -381,26 +379,25 @@ async function fetchYtdlCoreMetadata(youtubeUrl) {
 
   const selectedFormats = [];
   const heightMap = new Map();
+
+  const audioFormats = ytdl.filterFormats(rawFormats, 'audioonly');
   let bestAudio = null;
-
-  for (const fmt of rawFormats) {
-    if (!fmt.url) continue;
-
-    const isVideo = fmt.hasVideo;
-    const isAudio = fmt.hasAudio;
-
-    if (isAudio && (!bestAudio || (parseInt(fmt.audioBitrate || fmt.bitrate || 0) > parseInt(bestAudio.audioBitrate || bestAudio.bitrate || 0)))) {
-      bestAudio = fmt;
-    }
-    if (isVideo && fmt.height) {
-      if (!heightMap.has(fmt.height)) {
-        heightMap.set(fmt.height, fmt);
-      }
+  for (const aFmt of audioFormats) {
+    if (aFmt.url && (!bestAudio || (parseInt(aFmt.audioBitrate || aFmt.bitrate || 0) > parseInt(bestAudio.audioBitrate || bestAudio.bitrate || 0)))) {
+      bestAudio = aFmt;
     }
   }
 
   const audioUrl = bestAudio ? bestAudio.url : null;
   const audioSize = bestAudio ? parseInt(bestAudio.contentLength || "0", 10) : 0;
+
+  for (const fmt of rawFormats) {
+    if (!fmt.url || !fmt.hasVideo) continue;
+    if (fmt.height && !heightMap.has(fmt.height)) {
+      heightMap.set(fmt.height, fmt);
+    }
+  }
+
   const sortedHeights = Array.from(heightMap.keys()).sort((a, b) => b - a);
 
   sortedHeights.forEach((height, idx) => {
