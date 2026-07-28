@@ -177,6 +177,11 @@ function App() {
         body: JSON.stringify({ url: targetUrl })
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Backend URL connection error. Please verify your live Render backend URL in vercel.json.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
