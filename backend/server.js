@@ -54,32 +54,18 @@ function downloadLatestYtDlpBinary(destinationPath) {
   });
 }
 
-// Ensure yt-dlp binary exists & is updated to the latest release
 async function ensureYtDlp() {
   if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
   }
 
-  // Force re-download if file is missing or small/invalid
-  let needsDownload = !fs.existsSync(ytDlpPath);
-  if (!needsDownload) {
-    try {
-      const stats = fs.statSync(ytDlpPath);
-      if (stats.size < 1000000) { // If binary is under 1MB, re-download
-        needsDownload = true;
-      }
-    } catch (e) {
-      needsDownload = true;
-    }
-  }
-
-  if (needsDownload) {
-    console.log(`Downloading latest official yt-dlp release from GitHub to ${ytDlpPath}...`);
-    try {
-      await downloadLatestYtDlpBinary(ytDlpPath);
-      console.log('yt-dlp download complete!');
-    } catch (err) {
-      console.error('Direct GitHub binary download error, using fallback package downloader:', err.message);
+  console.log(`Ensuring latest official yt-dlp release from GitHub at ${ytDlpPath}...`);
+  try {
+    await downloadLatestYtDlpBinary(ytDlpPath);
+    console.log('yt-dlp binary update complete!');
+  } catch (err) {
+    console.error('Direct GitHub binary download error, using fallback downloader:', err.message);
+    if (!fs.existsSync(ytDlpPath)) {
       const downloader = YTDlpWrap.default || YTDlpWrap;
       await downloader.downloadFromGithub(ytDlpPath);
       if (!isWindows) {
@@ -405,7 +391,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-warnings",
       "--geo-bypass",
       "--extractor-args",
-      "youtube:player_client=android,web_creator"
+      "youtube:player_client=mweb,tv_embedded,android,web"
     ];
 
     if (fs.existsSync(cookiesPath)) {
