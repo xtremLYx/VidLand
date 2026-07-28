@@ -403,14 +403,13 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "-J",
       "--no-playlist",
       "--no-warnings",
-      "--geo-bypass"
+      "--geo-bypass",
+      "--extractor-args",
+      "youtube:player_client=android,web_creator"
     ];
 
     if (fs.existsSync(cookiesPath)) {
       ytArgs.push("--cookies", cookiesPath);
-      ytArgs.push("--extractor-args", "youtube:player_client=web,android");
-    } else {
-      ytArgs.push("--extractor-args", "youtube:player_client=android_vr,web");
     }
 
     const stdout = await ytDlp.execPromise(ytArgs);
