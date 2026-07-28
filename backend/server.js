@@ -3,6 +3,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
+import https from 'https';
 import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YTDlpWrapPackage from 'yt-dlp-wrap';
@@ -22,26 +23,68 @@ const isWindows = process.platform === 'win32';
 const ytDlpFilename = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
 const ytDlpPath = path.join(binDir, ytDlpFilename);
 
+// Download official latest yt-dlp binary directly from GitHub releases
+function downloadLatestYtDlpBinary(destinationPath) {
+  return new Promise((resolve, reject) => {
+    const downloadUrl = isWindows 
+      ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+      : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+
+    const fetchUrl = (url) => {
+      https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return fetchUrl(res.headers.location);
+        }
+        if (res.statusCode !== 200) {
+          return reject(new Error(`Failed to fetch yt-dlp binary: HTTP status ${res.statusCode}`));
+        }
+        const fileStream = fs.createWriteStream(destinationPath);
+        res.pipe(fileStream);
+        fileStream.on('finish', () => {
+          fileStream.close();
+          if (!isWindows) {
+            fs.chmodSync(destinationPath, 0o755); // Make executable on Linux/Mac
+          }
+          resolve();
+        });
+      }).on('error', reject);
+    };
+
+    fetchUrl(downloadUrl);
+  });
+}
+
 // Ensure yt-dlp binary exists & is updated to the latest release
 async function ensureYtDlp() {
   if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
   }
-  const downloader = YTDlpWrap.default || YTDlpWrap;
-  if (!fs.existsSync(ytDlpPath)) {
-    console.log(`yt-dlp not found at ${ytDlpPath}. Downloading latest release from GitHub...`);
-    await downloader.downloadFromGithub(ytDlpPath);
-    console.log('yt-dlp download complete!');
-    if (!isWindows) {
-      fs.chmodSync(ytDlpPath, 0o755); // make executable
-    }
-  } else {
+
+  // Force re-download if file is missing or small/invalid
+  let needsDownload = !fs.existsSync(ytDlpPath);
+  if (!needsDownload) {
     try {
-      console.log("Ensuring latest yt-dlp binary version...");
-      const ytDlp = new YTDlpWrap(ytDlpPath);
-      await ytDlp.execPromise(["-U"]);
+      const stats = fs.statSync(ytDlpPath);
+      if (stats.size < 1000000) { // If binary is under 1MB, re-download
+        needsDownload = true;
+      }
     } catch (e) {
-      console.log("yt-dlp self-update status:", e.message);
+      needsDownload = true;
+    }
+  }
+
+  if (needsDownload) {
+    console.log(`Downloading latest official yt-dlp release from GitHub to ${ytDlpPath}...`);
+    try {
+      await downloadLatestYtDlpBinary(ytDlpPath);
+      console.log('yt-dlp download complete!');
+    } catch (err) {
+      console.error('Direct GitHub binary download error, using fallback package downloader:', err.message);
+      const downloader = YTDlpWrap.default || YTDlpWrap;
+      await downloader.downloadFromGithub(ytDlpPath);
+      if (!isWindows) {
+        fs.chmodSync(ytDlpPath, 0o755);
+      }
     }
   }
 }
