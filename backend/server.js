@@ -403,7 +403,8 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "-J",
       "--no-playlist",
       "--no-warnings",
-      "--geo-bypass"
+      "--geo-bypass",
+      "--geo-bypass-country", "IN"
     ];
 
     if (fs.existsSync(cookiesPath)) {
