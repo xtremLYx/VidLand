@@ -236,17 +236,15 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
     await ensureYtDlp();
     const ytDlp = new YTDlpWrap(ytDlpPath);
     
-    // Run yt-dlp metadata extraction with player client fallbacks to handle age-restricted videos
+    // Run yt-dlp metadata extraction with matching native player clients to handle age-restricted videos
     const stdout = await ytDlp.execPromise([
       url,
       "-J",
       "--no-playlist",
       "--no-warnings",
       "--geo-bypass",
-      "--user-agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
       "--extractor-args",
-      "youtube:player_client=android,ios,mweb,tv"
+      "youtube:player_client=android_vr,android,ios,mweb,tv"
     ]);
     
     const data = JSON.parse(stdout);
