@@ -408,6 +408,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
 
     if (fs.existsSync(cookiesPath)) {
       ytArgs.push("--cookies", cookiesPath);
+      ytArgs.push("--extractor-args", "youtube:player_client=web,android");
     } else {
       ytArgs.push("--extractor-args", "youtube:player_client=android_vr,web");
     }
