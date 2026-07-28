@@ -390,8 +390,9 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-playlist",
       "--no-warnings",
       "--geo-bypass",
+      "--js-runtimes", "node",
       "--extractor-args",
-      "youtube:player_client=mweb,tv_embedded,android,web"
+      "youtube:player_client=android_vr,android,web"
     ];
 
     if (fs.existsSync(cookiesPath)) {
