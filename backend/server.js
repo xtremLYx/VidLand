@@ -271,6 +271,107 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Fallback YouTube metadata parser for cloud datacenter IPs
+async function fetchFallbackYouTubeMetadata(youtubeUrl) {
+  const videoIdMatch = youtubeUrl.match(/(?:v=|\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (!videoIdMatch) throw new Error('Invalid YouTube video ID.');
+  const videoId = videoIdMatch[1];
+  const watchUrl = 'https://www.youtube.com/watch?v=' + videoId;
+  const response = await fetch(watchUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9'
+    }
+  });
+  const html = await response.text();
+  const match = html.match(/var ytInitialPlayerResponse\s*=\s*({.+?});/);
+  if (!match) throw new Error('Failed to parse YouTube player data.');
+  
+  const data = JSON.parse(match[1]);
+  const details = data.videoDetails || {};
+  const streamingData = data.streamingData || {};
+  const title = details.title || "Video Download";
+  const thumbnail = details.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const duration = parseInt(details.lengthSeconds || "0", 10);
+  
+  const rawFormats = [...(streamingData.formats || []), ...(streamingData.adaptiveFormats || [])];
+  const selectedFormats = [];
+  const heightMap = new Map();
+  let bestAudio = null;
+
+  for (const fmt of rawFormats) {
+    let directUrl = fmt.url;
+    if (!directUrl && (fmt.signatureCipher || fmt.cipher)) {
+      const cipher = fmt.signatureCipher || fmt.cipher;
+      const params = new URLSearchParams(cipher);
+      directUrl = params.get('url');
+    }
+    if (!directUrl) continue;
+    fmt.url = directUrl;
+
+    const isVideo = fmt.mimeType?.includes('video');
+    const isAudio = fmt.mimeType?.includes('audio');
+
+    if (isAudio && (!bestAudio || (parseInt(fmt.bitrate || 0) > parseInt(bestAudio.bitrate || 0)))) {
+      bestAudio = fmt;
+    }
+    if (isVideo && fmt.height) {
+      if (!heightMap.has(fmt.height)) {
+        heightMap.set(fmt.height, fmt);
+      }
+    }
+  }
+
+  const audioUrl = bestAudio ? bestAudio.url : null;
+  const audioSize = bestAudio ? parseInt(bestAudio.contentLength || "0", 10) : 0;
+  const sortedHeights = Array.from(heightMap.keys()).sort((a, b) => b - a);
+
+  sortedHeights.forEach((height, idx) => {
+    const fmt = heightMap.get(height);
+    const isVideoOnly = !fmt.mimeType?.includes('audio');
+    const isMaxQuality = (idx === 0);
+
+    let qualityBadge = `${height}p`;
+    if (height >= 2160) qualityBadge = `${height}p (4K Ultra HD)`;
+    else if (height === 1440) qualityBadge = `${height}p (2K Quad HD)`;
+    else if (height === 1080) qualityBadge = `1080p (Full HD)`;
+
+    const label = isMaxQuality ? `MP4 ${qualityBadge} 🔥 [Max Quality]` : `MP4 ${qualityBadge}`;
+    const rawVideoSize = parseInt(fmt.contentLength || "0", 10);
+    const totalCalculatedSize = rawVideoSize > 0 
+      ? (isVideoOnly ? rawVideoSize + audioSize : rawVideoSize) 
+      : (audioSize > 0 && isVideoOnly ? audioSize : null);
+
+    selectedFormats.push({
+      label,
+      resolution: `${height}p`,
+      ext: "mp4",
+      format_id: fmt.itag?.toString() || "",
+      url: fmt.url,
+      filesize: totalCalculatedSize,
+      audioUrl: isVideoOnly ? audioUrl : null
+    });
+  });
+
+  if (bestAudio) {
+    selectedFormats.push({
+      label: "MP3 Audio (128kbps)",
+      resolution: "Audio",
+      ext: "mp3",
+      format_id: bestAudio.itag?.toString() || "",
+      url: bestAudio.url,
+      filesize: parseInt(bestAudio.contentLength || "0", 10) || null,
+      audioUrl: null
+    });
+  }
+
+  if (selectedFormats.length === 0) {
+    throw new Error('No public formats found via fallback.');
+  }
+
+  return { title, thumbnail, platform: "YouTube", duration, formats: selectedFormats };
+}
+
 // API Routes
 app.post('/api/fetch', apiLimiter, async (req, res) => {
   const { url } = req.body;
@@ -313,17 +414,22 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       formats
     });
   } catch (error) {
-    console.error("Error executing yt-dlp:", error);
-    
-    const errMessage = error.message || "";
-    if (errMessage.toLowerCase().includes("private")) {
-      res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
-    } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
-      res.status(403).json({ detail: "This video is age-restricted or requires account login." });
-    } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
-      res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
-    } else {
-      res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
+    console.error("Error executing yt-dlp, attempting fallback parser...", error.message);
+    try {
+      const fallbackData = await fetchFallbackYouTubeMetadata(url);
+      return res.json(fallbackData);
+    } catch (fallbackError) {
+      console.error("Fallback parser failed:", fallbackError.message);
+      const errMessage = error.message || "";
+      if (errMessage.toLowerCase().includes("private")) {
+        res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
+      } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
+        res.status(403).json({ detail: "This video is age-restricted or requires account login." });
+      } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
+        res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
+      } else {
+        res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
+      }
     }
   }
 });
