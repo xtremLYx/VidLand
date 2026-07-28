@@ -44,7 +44,7 @@ function isSafeUrl(url) {
   if (!url) return false;
   
   // 1. Regex check to restrict domain suffixes strictly
-  const pattern = /^https?:\/\/([a-zA-Z0-9-]+\.)*(youtube\.com|youtu\.be|instagram\.com|dd\.instagram\.com)(:[0-9]+)?(\/.*)?$/i;
+  const pattern = /^https?:\/\/([a-zA-Z0-9-]+\.)*(youtube\.com|youtu\.be)(:[0-9]+)?(\/.*)?$/i;
   if (!pattern.test(url)) return false;
   
   // 2. Prevent userinfo @ bypasses
@@ -53,7 +53,7 @@ function isSafeUrl(url) {
     if (parsed.username || parsed.password) return false;
     
     const hostname = parsed.hostname.toLowerCase();
-    const allowedDomains = ["youtube.com", "youtu.be", "instagram.com", "dd.instagram.com"];
+    const allowedDomains = ["youtube.com", "youtu.be"];
     
     const matched = allowedDomains.some(domain => 
       hostname === domain || hostname.endsWith("." + domain)
@@ -73,11 +73,7 @@ function validateCdnUrl(url) {
     
     const allowedSuffixes = [
       ".googlevideo.com",
-      "googlevideo.com",
-      ".cdninstagram.com",
-      "cdninstagram.com",
-      ".fbcdn.net",
-      "fbcdn.net"
+      "googlevideo.com"
     ];
     
     return allowedSuffixes.some(suffix => 
@@ -116,12 +112,8 @@ function extractFormats(ytdlpData, url) {
   const formatsList = ytdlpData.formats || [];
   const selectedFormats = [];
   
-  const categories = {
-    "1080p": { height: 1080, best: null },
-    "720p": { height: 720, best: null },
-    "360p": { height: 360, best: null },
-    "audio": { height: null, best: null }
-  };
+  let bestAudio = null;
+  const heightMap = new Map();
   
   for (const fmt of formatsList) {
     const ext = fmt.ext || "";
@@ -132,40 +124,38 @@ function extractFormats(ytdlpData, url) {
     
     if (!directUrl) continue;
     
-    // Audio selection
+    // Audio track selection
     if (vcodec === "none" && acodec !== "none") {
       const abr = fmt.abr || 0;
-      const currBest = categories.audio.best;
-      if (!currBest) {
-        categories.audio.best = fmt;
-      } else {
-        if (fmt.format_id === "140") { // Standard 128k m4a
-          categories.audio.best = fmt;
-        } else if (currBest.format_id !== "140" && Math.abs(abr - 128) < Math.abs((currBest.abr || 0) - 128)) {
-          categories.audio.best = fmt;
-        }
+      if (!bestAudio) {
+        bestAudio = fmt;
+      } else if (fmt.format_id === "140") {
+        bestAudio = fmt;
+      } else if (bestAudio.format_id !== "140" && Math.abs(abr - 128) < Math.abs((bestAudio.abr || 0) - 128)) {
+        bestAudio = fmt;
       }
+      continue;
     }
     
-    // Video resolution match
-    if ([1080, 720, 360].includes(height)) {
-      const catKey = `${height}p`;
-      const currBest = categories[catKey].best;
-      
-      if (!currBest) {
-        categories[catKey].best = fmt;
+    // Video format matching per resolution height
+    if (height && vcodec !== "none") {
+      const existing = heightMap.get(height);
+      if (!existing) {
+        heightMap.set(height, fmt);
       } else {
-        const currMuxed = (currBest.acodec !== "none" && currBest.vcodec !== "none");
         const fmtMuxed = (acodec !== "none" && vcodec !== "none");
+        const existingMuxed = (existing.acodec !== "none" && (existing.vcodec || "none") !== "none");
+        const fmtH264 = vcodec.includes("avc1");
+        const existingH264 = (existing.vcodec || "").includes("avc1");
         
-        if (currBest.ext !== "mp4" && ext === "mp4") {
-          categories[catKey].best = fmt;
-        } else if ((currBest.ext === "mp4" && ext === "mp4") || (currBest.ext !== "mp4" && ext !== "mp4")) {
-          if (fmtMuxed && !currMuxed) {
-            categories[catKey].best = fmt;
-          } else if (fmtMuxed === currMuxed) {
-            if ((fmt.tbr || 0) > (currBest.tbr || 0)) {
-              categories[catKey].best = fmt;
+        if (fmtH264 && !existingH264) {
+          heightMap.set(height, fmt);
+        } else if (fmtH264 === existingH264) {
+          if (fmtMuxed && !existingMuxed) {
+            heightMap.set(height, fmt);
+          } else if (fmtMuxed === existingMuxed) {
+            if ((fmt.tbr || 0) > (existing.tbr || 0)) {
+              heightMap.set(height, fmt);
             }
           }
         }
@@ -173,68 +163,46 @@ function extractFormats(ytdlpData, url) {
     }
   }
   
-  // Compile the final format maps
-  const audioBest = categories.audio.best;
-  const audioUrl = audioBest ? audioBest.url : null;
-
-  for (const [key, val] of Object.entries(categories)) {
-    const fmt = val.best;
-    if (fmt) {
-      const height = fmt.height;
-      const ext = fmt.ext || "";
-      const format_id = fmt.format_id || "";
-      const directUrl = fmt.url || "";
-      
-      let label, displayExt;
-      if (key === "audio") {
-        label = "MP3 Audio (128kbps)";
-        displayExt = "mp3";
-      } else {
-        label = `MP4 ${key}`;
-        displayExt = "mp4";
-      }
-      
-      const isVideoOnly = key !== "audio" && (fmt.acodec === "none" || !fmt.acodec);
-      
-      selectedFormats.push({
-        label,
-        resolution: height ? `${height}p` : "Audio",
-        ext: displayExt,
-        format_id,
-        url: directUrl,
-        filesize: fmt.filesize || fmt.filesize_approx,
-        audioUrl: isVideoOnly ? audioUrl : null
-      });
-    }
-  }
+  const audioUrl = bestAudio ? bestAudio.url : null;
+  const audioSize = bestAudio ? (bestAudio.filesize || bestAudio.filesize_approx || 0) : 0;
+  const sortedHeights = Array.from(heightMap.keys()).sort((a, b) => b - a);
   
-  // For Instagram/other platforms that serve arbitrary sizes
-  if (selectedFormats.length === 0) {
-    for (const fmt of formatsList) {
-      const height = fmt.height;
-      const ext = fmt.ext || "mp4";
-      const directUrl = fmt.url;
-      if (!directUrl) continue;
-      
-      if (height) {
-        selectedFormats.push({
-          label: `MP4 ${height}p`,
-          resolution: `${height}p`,
-          ext: ext.includes("mp4") ? "mp4" : ext,
-          format_id: fmt.format_id || "",
-          url: directUrl,
-          filesize: fmt.filesize || fmt.filesize_approx
-        });
-      }
-    }
+  sortedHeights.forEach((height, idx) => {
+    const fmt = heightMap.get(height);
+    const isVideoOnly = fmt.acodec === "none" || !fmt.acodec;
+    const isMaxQuality = (idx === 0);
     
-    // Sort and limit
-    selectedFormats.sort((a, b) => {
-      const hA = parseInt(a.resolution.replace("p", "")) || 0;
-      const hB = parseInt(b.resolution.replace("p", "")) || 0;
-      return hB - hA;
+    let qualityBadge = `${height}p`;
+    if (height >= 2160) qualityBadge = `${height}p (4K Ultra HD)`;
+    else if (height === 1440) qualityBadge = `${height}p (2K Quad HD)`;
+    else if (height === 1080) qualityBadge = `1080p (Full HD)`;
+    
+    const label = isMaxQuality ? `MP4 ${qualityBadge} 🔥 [Max Quality]` : `MP4 ${qualityBadge}`;
+    
+    const rawVideoSize = fmt.filesize || fmt.filesize_approx || 0;
+    const totalCalculatedSize = rawVideoSize > 0 ? (isVideoOnly ? rawVideoSize + audioSize : rawVideoSize) : (audioSize > 0 && isVideoOnly ? audioSize : null);
+    
+    selectedFormats.push({
+      label,
+      resolution: `${height}p`,
+      ext: "mp4",
+      format_id: fmt.format_id || "",
+      url: fmt.url,
+      filesize: totalCalculatedSize,
+      audioUrl: isVideoOnly ? audioUrl : null
     });
-    return selectedFormats.slice(0, 4);
+  });
+  
+  if (bestAudio) {
+    selectedFormats.push({
+      label: "MP3 Audio (128kbps)",
+      resolution: "Audio",
+      ext: "mp3",
+      format_id: bestAudio.format_id || "",
+      url: bestAudio.url,
+      filesize: bestAudio.filesize || bestAudio.filesize_approx || null,
+      audioUrl: null
+    });
   }
   
   return selectedFormats;
@@ -261,7 +229,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
   }
   
   if (!isSafeUrl(url)) {
-    return res.status(400).json({ detail: "Forbidden: Only YouTube and Instagram URLs are allowed." });
+    return res.status(400).json({ detail: "Forbidden: Only YouTube URLs are allowed." });
   }
   
   try {
@@ -279,7 +247,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
     const data = JSON.parse(stdout);
     const title = data.title || "Video Download";
     const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
-    const platform = url.toLowerCase().includes("youtu") ? "YouTube" : "Instagram";
+    const platform = "YouTube";
     const duration = data.duration || 0;
     
     const formats = extractFormats(data, url);
@@ -308,7 +276,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
 });
 
 app.get('/api/download', async (req, res) => {
-  const { url, audioUrl, title = 'download', format = 'mp4' } = req.query;
+  const { url, audioUrl, title = 'download', format = 'mp4', size } = req.query;
   
   if (!url) {
     return res.status(400).json({ detail: "URL query parameter is required." });
@@ -331,18 +299,67 @@ app.get('/api/download', async (req, res) => {
   
   const sanitizedTitle = sanitizeFilename(title) || "video";
   const filename = `${sanitizedTitle}.${ext}`;
+  const expectedSize = (size && !isNaN(parseInt(size))) ? parseInt(size, 10) : null;
+  
+  if (ext === "mp3") {
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader("Content-Type", "audio/mpeg");
+    if (expectedSize && expectedSize > 0) {
+      res.setHeader("Content-Length", expectedSize.toString());
+    }
+    
+    const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
+    const ffmpegArgs = [
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-headers', ffHeaders,
+      '-i', url,
+      '-vn',
+      '-c:a', 'libmp3lame',
+      '-q:a', '2',
+      '-f', 'mp3',
+      'pipe:1'
+    ];
+    
+    console.log(`Starting FFmpeg MP3 transcoding: ${ffmpegPath} ${ffmpegArgs.join(' ')}`);
+    const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs);
+    ffmpegProcess.stdout.pipe(res);
+    
+    ffmpegProcess.stderr.on('data', (data) => {
+      const log = data.toString();
+      if (log.includes('Error')) console.error(`FFmpeg stderr: ${log}`);
+    });
+    ffmpegProcess.on('error', (err) => {
+      console.error("FFmpeg MP3 process error:", err);
+      if (!res.headersSent) res.status(500).json({ detail: `FFmpeg MP3 conversion failed: ${err.message}` });
+    });
+    req.on('close', () => ffmpegProcess.kill('SIGKILL'));
+    return;
+  }
   
   if (audioUrl && ext === "mp4") {
-    // We need to mux video and audio!
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", "video/mp4");
+    if (expectedSize && expectedSize > 0) {
+      res.setHeader("Content-Length", expectedSize.toString());
+    }
     
-    // We use ffmpeg to merge them.
-    // Since it's a full download, we do copy codec if possible for fast merging
+    const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
     const ffmpegArgs = [
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-headers', ffHeaders,
       '-i', url,
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-headers', ffHeaders,
       '-i', audioUrl,
-      '-c:v', 'copy',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '23',
       '-c:a', 'aac',
       '-map', '0:v:0',
       '-map', '1:a:0',
@@ -353,31 +370,17 @@ app.get('/api/download', async (req, res) => {
     
     console.log(`Starting FFmpeg download muxing: ${ffmpegPath} ${ffmpegArgs.join(' ')}`);
     const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs);
-    
     ffmpegProcess.stdout.pipe(res);
     
     ffmpegProcess.stderr.on('data', (data) => {
       const log = data.toString();
-      if (log.includes('Error')) {
-        console.error(`FFmpeg stderr during download muxing: ${log}`);
-      }
+      if (log.includes('Error')) console.error(`FFmpeg stderr during download muxing: ${log}`);
     });
-    
     ffmpegProcess.on('error', (err) => {
-      console.error("FFmpeg download muxing process error:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ detail: `FFmpeg transcoding failed: ${err.message}` });
-      }
+      console.error("FFmpeg download process error:", err);
+      if (!res.headersSent) res.status(500).json({ detail: `FFmpeg download failed: ${err.message}` });
     });
-    
-    ffmpegProcess.on('close', (code) => {
-      console.log(`FFmpeg download muxing finished with code ${code}`);
-    });
-    
-    req.on('close', () => {
-      console.log("Client download connection closed. Killing FFmpeg process...");
-      ffmpegProcess.kill('SIGKILL');
-    });
+    req.on('close', () => ffmpegProcess.kill('SIGKILL'));
     return;
   }
   
@@ -406,13 +409,13 @@ app.get('/api/download', async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", contentType);
     
-    const contentLength = response.headers.get("content-length");
+    const contentLength = expectedSize || response.headers.get("content-length");
     if (contentLength) {
-      res.setHeader("Content-Length", contentLength);
+      res.setHeader("Content-Length", contentLength.toString());
     }
     
-    // Pipe response body to Express response stream
-    const readable = Readable.fromWeb(response.body);
+    // Pipe response body to Express response stream with 1MB highWaterMark for max download speed
+    const readable = Readable.fromWeb(response.body, { highWaterMark: 1024 * 1024 });
     readable.pipe(res);
     
     readable.on('error', (err) => {
@@ -426,7 +429,7 @@ app.get('/api/download', async (req, res) => {
 });
 
 app.get('/api/trim', async (req, res) => {
-  const { videoUrl, audioUrl, start = 0, end = 10, crop = 'landscape', title = 'clip' } = req.query;
+  const { videoUrl, audioUrl, start = 0, end = 10, crop = 'landscape', title = 'clip', size } = req.query;
 
   if (!videoUrl) {
     return res.status(400).json({ detail: "videoUrl is required." });
@@ -454,19 +457,36 @@ app.get('/api/trim', async (req, res) => {
 
   res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
   res.setHeader("Content-Type", "video/mp4");
+  if (size && !isNaN(parseInt(size)) && parseInt(size) > 0) {
+    res.setHeader("Content-Length", parseInt(size).toString());
+  }
 
   const ffmpegArgs = [];
+
+  const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
 
   // Add inputs with seeking
   if (audioUrl) {
     ffmpegArgs.push(
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-headers', ffHeaders,
       '-ss', startSec.toString(),
       '-i', videoUrl,
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-headers', ffHeaders,
       '-ss', startSec.toString(),
       '-i', audioUrl
     );
   } else {
     ffmpegArgs.push(
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-headers', ffHeaders,
       '-ss', startSec.toString(),
       '-i', videoUrl
     );
@@ -537,15 +557,6 @@ app.get('/api/trim', async (req, res) => {
     ffmpegProcess.kill('SIGKILL');
   });
 });
-
-// Serve frontend build static files in production
-const frontendBuildPath = path.resolve(__dirname, '../frontend/dist');
-if (fs.existsSync(frontendBuildPath)) {
-  app.use(express.static(frontendBuildPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendBuildPath, 'index.html'));
-  });
-}
 
 // Start server
 app.listen(PORT, async () => {

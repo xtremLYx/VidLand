@@ -6,7 +6,7 @@ A premium, privacy-first, zero-footprint web application for downloading and tri
 
 ## ✦ Key Features
 
-- **Platform Support:** Seamless extraction from YouTube and Instagram.
+- **Platform Support:** Seamless extraction from YouTube.
 - **In-Memory Streaming Proxy:** Video and audio files are piped directly in memory from CDNs, ensuring high security and zero storage footprints.
 - **Adaptive Muxing:** High-resolution streams (e.g. 1080p, 720p) are merged on-the-fly with their matching audio tracks using FFmpeg stream copying (`-c:v copy`) for near-instant downloads.
 - **Shorts-Cutter (Trim & Crop Engine):**
@@ -101,5 +101,4 @@ const ffmpegArgs = [
 ### 2. Security Validation
 To prevent Server-Side Request Forgery (SSRF), all incoming video and CDN download requests are strictly checked against a whitelist of trusted domains and patterns:
 - YouTube (`youtube.com`, `youtu.be`)
-- Instagram (`instagram.com`, `dd.instagram.com`)
-- Valid Media CDNs (`*.googlevideo.com`, `*.cdninstagram.com`, `*.fbcdn.net`)
+- Valid Media CDNs (`*.googlevideo.com`)
