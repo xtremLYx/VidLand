@@ -469,7 +469,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-warnings",
       "--geo-bypass",
       "--extractor-args",
-      "youtube:player_client=android_vr,web"
+      "youtube:player_client=ios,android,web"
     ];
 
     if (fs.existsSync(cookiesPath)) {
