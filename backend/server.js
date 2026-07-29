@@ -502,7 +502,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       }
     }
 
-    // Strategy 2: Try direct yt-dlp with mweb,android client fallback
+    // Strategy 2: Try direct yt-dlp with android client fallback
     if (!stdout) {
       try {
         const directArgs = [
@@ -511,8 +511,8 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
           "--no-playlist",
           "--no-warnings",
           "--geo-bypass",
-          "--socket-timeout", "8",
-          "--extractor-args", "youtube:player_client=mweb,android,android_vr"
+          "--socket-timeout", "10",
+          "--extractor-args", "youtube:player_client=android"
         ];
         if (fs.existsSync(cookiesPath)) directArgs.push("--cookies", cookiesPath);
         stdout = await ytDlp.execPromise(directArgs);
