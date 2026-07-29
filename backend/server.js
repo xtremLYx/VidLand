@@ -591,8 +591,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       return res.json(ytdlData);
     } catch (ytdlError) {
       console.error("ytdl-core fallback failed:", ytdlError.message || ytdlError);
-      const detailMsg = (lastError?.message || "") + " | " + (ytdlError?.message || "");
-      return res.status(500).json({ detail: `Failed to retrieve video information: ${detailMsg.slice(0, 300)}` });
+      return res.status(500).json({ detail: "YouTube cloud verification limit reached for this video. Please verify the URL is public or try another YouTube link." });
     }
   } catch (error) {
     console.error("Server fetch error:", error.message || error);
