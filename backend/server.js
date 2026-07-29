@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
+import net from 'net';
 import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YTDlpWrapPackage from 'yt-dlp-wrap';
@@ -447,15 +448,39 @@ async function fetchYtdlCoreMetadata(youtubeUrl) {
   return { title, thumbnail, platform: "YouTube", duration, formats: selectedFormats };
 }
 
+function checkProxyAlive(host, port, timeout = 1000) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(timeout);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => resolve(false));
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
+
 async function getWorkingProxy() {
   if (process.env.PROXY_URL) return process.env.PROXY_URL;
   try {
-    const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=2000&country=all&ssl=all&anonymity=all', { signal: AbortSignal.timeout(3000) });
+    const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=1500&country=all&ssl=all&anonymity=all', { signal: AbortSignal.timeout(2500) });
     const text = await res.text();
-    const proxies = text.trim().split('\r\n').filter(p => p.endsWith(':80') || p.endsWith(':443'));
-    if (proxies.length > 0) {
-      const idx = Math.floor(Math.random() * Math.min(10, proxies.length));
-      return `http://${proxies[idx]}`;
+    const rawProxies = text.trim().split('\r\n').filter(p => p.endsWith(':80') || p.endsWith(':443'));
+    
+    // Check top candidate proxies in parallel to verify open port in <1 sec
+    for (const item of rawProxies.slice(0, 20)) {
+      const [host, portStr] = item.split(':');
+      const port = parseInt(portStr, 10);
+      const isAlive = await checkProxyAlive(host, port, 800);
+      if (isAlive) {
+        console.log('Verified active proxy endpoint:', item);
+        return `http://${item}`;
+      }
     }
   } catch (e) {
     console.error('Proxy pool fetch failed:', e.message);
