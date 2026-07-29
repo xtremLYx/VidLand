@@ -467,24 +467,38 @@ function checkProxyAlive(host, port, timeout = 1000) {
 
 async function getWorkingProxy() {
   if (process.env.PROXY_URL) return process.env.PROXY_URL;
+  
+  const validPorts = [':80', ':443', ':8080', ':8000', ':8888', ':3128', ':8081'];
+  let candidateProxies = [];
+
   try {
     const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=1500&country=all&ssl=all&anonymity=all', { signal: AbortSignal.timeout(2500) });
     const text = await res.text();
-    const rawProxies = text.trim().split('\r\n').filter(p => p.endsWith(':80') || p.endsWith(':443'));
-    
-    // Check top candidate proxies in parallel to verify open port in <1 sec
-    for (const item of rawProxies.slice(0, 20)) {
-      const [host, portStr] = item.split(':');
-      const port = parseInt(portStr, 10);
-      const isAlive = await checkProxyAlive(host, port, 800);
-      if (isAlive) {
-        console.log('Verified active proxy endpoint:', item);
-        return `http://${item}`;
-      }
-    }
+    candidateProxies = text.trim().split('\r\n').filter(p => validPorts.some(port => p.endsWith(port)));
   } catch (e) {
-    console.error('Proxy pool fetch failed:', e.message);
+    console.warn('ProxyScrape fetch failed, trying GitHub fallback list...');
   }
+
+  if (candidateProxies.length === 0) {
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt', { signal: AbortSignal.timeout(3000) });
+      const text = await res.text();
+      candidateProxies = text.trim().split('\n').map(p => p.trim()).filter(p => validPorts.some(port => p.endsWith(port)));
+    } catch (e) {
+      console.error('Fallback proxy pool fetch failed:', e.message);
+    }
+  }
+
+  for (const item of candidateProxies.slice(0, 35)) {
+    const [host, portStr] = item.split(':');
+    const port = parseInt(portStr, 10);
+    const isAlive = await checkProxyAlive(host, port, 700);
+    if (isAlive) {
+      console.log('Verified active proxy endpoint:', item);
+      return `http://${item}`;
+    }
+  }
+
   return null;
 }
 
