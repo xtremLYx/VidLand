@@ -452,9 +452,9 @@ async function getWorkingProxy() {
   try {
     const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=2000&country=all&ssl=all&anonymity=all', { signal: AbortSignal.timeout(3000) });
     const text = await res.text();
-    const proxies = text.trim().split('\r\n').filter(Boolean);
+    const proxies = text.trim().split('\r\n').filter(p => p.endsWith(':80') || p.endsWith(':443'));
     if (proxies.length > 0) {
-      const idx = Math.floor(Math.random() * Math.min(15, proxies.length));
+      const idx = Math.floor(Math.random() * Math.min(10, proxies.length));
       return `http://${proxies[idx]}`;
     }
   } catch (e) {
