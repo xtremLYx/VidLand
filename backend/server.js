@@ -547,7 +547,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       }
     }
 
-    // Strategy 2: Try direct yt-dlp with android client fallback
+    // Strategy 2: Try direct yt-dlp with creator,android_vr client fallback
     if (!stdout) {
       try {
         const directArgs = [
@@ -557,7 +557,7 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
           "--no-warnings",
           "--geo-bypass",
           "--socket-timeout", "10",
-          "--extractor-args", "youtube:player_client=android"
+          "--extractor-args", "youtube:player_client=creator,android_vr"
         ];
         if (fs.existsSync(cookiesPath)) directArgs.push("--cookies", cookiesPath);
         stdout = await ytDlp.execPromise(directArgs);
