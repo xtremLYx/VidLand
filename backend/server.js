@@ -571,7 +571,8 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       return res.json(ytdlData);
     } catch (ytdlError) {
       console.error("ytdl-core fallback failed:", ytdlError.message || ytdlError);
-      return res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
+      const detailMsg = (lastError?.message || "") + " | " + (ytdlError?.message || "");
+      return res.status(500).json({ detail: `Failed to retrieve video information: ${detailMsg.slice(0, 300)}` });
     }
   } catch (error) {
     console.error("Server fetch error:", error.message || error);
