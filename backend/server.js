@@ -478,52 +478,79 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
     await ensureYtDlp();
     const ytDlp = new YTDlpWrap(ytDlpPath);
     
-    const ytArgs = [
-      url,
-      "-J",
-      "--no-playlist",
-      "--no-warnings",
-      "--geo-bypass",
-      "--socket-timeout", "10"
-    ];
+    let stdout = null;
+    let lastError = null;
 
+    // Strategy 1: Try yt-dlp via dynamic HTTPS proxy
     const proxy = await getWorkingProxy();
     if (proxy) {
-      ytArgs.push("--proxy", proxy);
+      try {
+        const proxyArgs = [
+          url,
+          "-J",
+          "--no-playlist",
+          "--no-warnings",
+          "--geo-bypass",
+          "--socket-timeout", "6",
+          "--proxy", proxy
+        ];
+        if (fs.existsSync(cookiesPath)) proxyArgs.push("--cookies", cookiesPath);
+        stdout = await ytDlp.execPromise(proxyArgs);
+      } catch (proxyErr) {
+        console.warn("Proxy attempt failed, falling back to direct yt-dlp execution:", proxyErr.message);
+        lastError = proxyErr;
+      }
     }
 
-    if (fs.existsSync(cookiesPath)) {
-      ytArgs.push("--cookies", cookiesPath);
+    // Strategy 2: Try direct yt-dlp with android client fallback
+    if (!stdout) {
+      try {
+        const directArgs = [
+          url,
+          "-J",
+          "--no-playlist",
+          "--no-warnings",
+          "--geo-bypass",
+          "--socket-timeout", "10",
+          "--extractor-args", "youtube:player_client=android,android_vr"
+        ];
+        if (fs.existsSync(cookiesPath)) directArgs.push("--cookies", cookiesPath);
+        stdout = await ytDlp.execPromise(directArgs);
+      } catch (directErr) {
+        console.warn("Direct yt-dlp attempt failed:", directErr.message);
+        lastError = directErr;
+      }
     }
 
-    const stdout = await ytDlp.execPromise(ytArgs);
-    const data = JSON.parse(stdout);
-    const title = data.title || "Video Download";
-    const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
-    const platform = "YouTube";
-    const duration = data.duration || 0;
-    const formats = extractFormats(data, url);
-    
-    return res.json({
-      title,
-      thumbnail,
-      platform,
-      duration,
-      formats
-    });
-  } catch (error) {
-    console.error("Error executing yt-dlp, attempting ytdl-core fallback...", error.message || error);
+    // Strategy 3: Parse extracted JSON stdout if either Strategy 1 or 2 succeeded
+    if (stdout) {
+      const data = JSON.parse(stdout);
+      const title = data.title || "Video Download";
+      const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
+      const platform = "YouTube";
+      const duration = data.duration || 0;
+      const formats = extractFormats(data, url);
+      
+      return res.json({
+        title,
+        thumbnail,
+        platform,
+        duration,
+        formats
+      });
+    }
+
+    // Strategy 4: Fallback to ytdl-core parser
     try {
       const ytdlData = await fetchYtdlCoreMetadata(url);
       return res.json(ytdlData);
     } catch (ytdlError) {
       console.error("ytdl-core fallback failed:", ytdlError.message || ytdlError);
-      const ytErr = error.message || String(error);
-      const ytdlErr = ytdlError.message || String(ytdlError);
-      return res.status(500).json({ 
-        detail: `yt-dlp: ${ytErr.slice(0, 300)} || ytdl-core: ${ytdlErr.slice(0, 300)}` 
-      });
+      return res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
     }
+  } catch (error) {
+    console.error("Server fetch error:", error.message || error);
+    return res.status(500).json({ detail: "Server error occurred while fetching video data." });
   }
 });
 
