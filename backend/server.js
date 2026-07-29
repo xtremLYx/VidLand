@@ -447,6 +447,22 @@ async function fetchYtdlCoreMetadata(youtubeUrl) {
   return { title, thumbnail, platform: "YouTube", duration, formats: selectedFormats };
 }
 
+async function getWorkingProxy() {
+  if (process.env.PROXY_URL) return process.env.PROXY_URL;
+  try {
+    const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=2000&country=all&ssl=all&anonymity=all', { signal: AbortSignal.timeout(3000) });
+    const text = await res.text();
+    const proxies = text.trim().split('\r\n').filter(Boolean);
+    if (proxies.length > 0) {
+      const idx = Math.floor(Math.random() * Math.min(15, proxies.length));
+      return `http://${proxies[idx]}`;
+    }
+  } catch (e) {
+    console.error('Proxy pool fetch failed:', e.message);
+  }
+  return null;
+}
+
 // API Routes
 app.post('/api/fetch', apiLimiter, async (req, res) => {
   const { url } = req.body;
@@ -468,9 +484,13 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-playlist",
       "--no-warnings",
       "--geo-bypass",
-      "--extractor-args",
-      "youtube:player_client=android"
+      "--socket-timeout", "10"
     ];
+
+    const proxy = await getWorkingProxy();
+    if (proxy) {
+      ytArgs.push("--proxy", proxy);
+    }
 
     if (fs.existsSync(cookiesPath)) {
       ytArgs.push("--cookies", cookiesPath);
