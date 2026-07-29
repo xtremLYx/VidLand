@@ -448,18 +448,21 @@ async function fetchYtdlCoreMetadata(youtubeUrl) {
   return { title, thumbnail, platform: "YouTube", duration, formats: selectedFormats };
 }
 
-function checkProxyAlive(host, port, timeout = 1000) {
-  return new Promise((resolve) => {
+function checkProxyAlive(host, port, timeout = 1200) {
+  return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     socket.setTimeout(timeout);
     socket.on('connect', () => {
       socket.destroy();
-      resolve(true);
+      resolve(`http://${host}:${port}`);
     });
-    socket.on('error', () => resolve(false));
+    socket.on('error', () => {
+      socket.destroy();
+      reject();
+    });
     socket.on('timeout', () => {
       socket.destroy();
-      resolve(false);
+      reject();
     });
     socket.connect(port, host);
   });
@@ -489,17 +492,20 @@ async function getWorkingProxy() {
     }
   }
 
-  for (const item of candidateProxies.slice(0, 35)) {
+  const tasks = candidateProxies.slice(0, 40).map(item => {
     const [host, portStr] = item.split(':');
     const port = parseInt(portStr, 10);
-    const isAlive = await checkProxyAlive(host, port, 700);
-    if (isAlive) {
-      console.log('Verified active proxy endpoint:', item);
-      return `http://${item}`;
-    }
-  }
+    return checkProxyAlive(host, port, 1200);
+  });
 
-  return null;
+  try {
+    const fastestProxy = await Promise.any(tasks);
+    console.log('Verified active proxy endpoint:', fastestProxy);
+    return fastestProxy;
+  } catch (e) {
+    console.warn('No proxy connected in parallel check');
+    return null;
+  }
 }
 
 // API Routes
