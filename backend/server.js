@@ -367,7 +367,8 @@ if (process.env.YOUTUBE_COOKIES) {
     console.log('Successfully saved YOUTUBE_COOKIES environment variable to cookies.txt');
   } catch (e) {
     console.error('Failed to write YOUTUBE_COOKIES:', e.message);
-// Fast & robust ytdl-core metadata parser for YouTube
+  }
+}
 async function fetchYtdlCoreMetadata(youtubeUrl) {
   const info = await ytdl.getInfo(youtubeUrl);
   const details = info.videoDetails;
