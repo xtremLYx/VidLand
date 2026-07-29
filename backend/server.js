@@ -498,16 +498,11 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       return res.json(ytdlData);
     } catch (ytdlError) {
       console.error("ytdl-core fallback failed:", ytdlError.message || ytdlError);
-      const errMessage = (error.message || "") + " | " + (ytdlError.message || "");
-      if (errMessage.toLowerCase().includes("private")) {
-        res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
-      } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
-        res.status(403).json({ detail: "This video is age-restricted or requires account login. (" + errMessage.slice(0, 150) + ")" });
-      } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
-        res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
-      } else {
-        res.status(500).json({ detail: "Failed to retrieve video information: " + errMessage.slice(0, 150) });
-      }
+      const ytErr = error.message || String(error);
+      const ytdlErr = ytdlError.message || String(ytdlError);
+      return res.status(500).json({ 
+        detail: `yt-dlp: ${ytErr.slice(0, 300)} || ytdl-core: ${ytdlErr.slice(0, 300)}` 
+      });
     }
   }
 });
