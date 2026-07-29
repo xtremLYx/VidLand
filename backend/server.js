@@ -467,7 +467,6 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
       "--no-playlist",
       "--no-warnings",
       "--geo-bypass",
-      "--js-runtimes", `node:${process.execPath}`,
       "--extractor-args",
       "youtube:player_client=android_vr,web"
     ];
