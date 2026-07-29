@@ -458,62 +458,55 @@ app.post('/api/fetch', apiLimiter, async (req, res) => {
   }
   
   try {
-    // Primary: Fast & reliable ytdl-core metadata parser
-    const ytdlData = await fetchYtdlCoreMetadata(url);
-    return res.json(ytdlData);
-  } catch (ytdlError) {
-    console.error("ytdl-core parser error, attempting yt-dlp fallback...", ytdlError.message);
+    await ensureYtDlp();
+    const ytDlp = new YTDlpWrap(ytDlpPath);
+    
+    const ytArgs = [
+      url,
+      "-J",
+      "--no-playlist",
+      "--no-warnings",
+      "--geo-bypass",
+      "--js-runtimes", `node:${process.execPath}`,
+      "--extractor-args",
+      "youtube:player_client=android_vr,web"
+    ];
+
+    if (fs.existsSync(cookiesPath)) {
+      ytArgs.push("--cookies", cookiesPath);
+    }
+
+    const stdout = await ytDlp.execPromise(ytArgs);
+    const data = JSON.parse(stdout);
+    const title = data.title || "Video Download";
+    const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
+    const platform = "YouTube";
+    const duration = data.duration || 0;
+    const formats = extractFormats(data, url);
+    
+    return res.json({
+      title,
+      thumbnail,
+      platform,
+      duration,
+      formats
+    });
+  } catch (error) {
+    console.error("Error executing yt-dlp, attempting ytdl-core fallback...", error.message);
     try {
-      await ensureYtDlp();
-      const ytDlp = new YTDlpWrap(ytDlpPath);
-      
-      const ytArgs = [
-        url,
-        "-J",
-        "--no-playlist",
-        "--no-warnings",
-        "--geo-bypass",
-        "--js-runtimes", `node:${process.execPath}`,
-        "--extractor-args",
-        "youtube:player_client=android_vr,android,web"
-      ];
-
-      if (fs.existsSync(cookiesPath)) {
-        ytArgs.push("--cookies", cookiesPath);
-      }
-
-      const stdout = await ytDlp.execPromise(ytArgs);
-      const data = JSON.parse(stdout);
-      const title = data.title || "Video Download";
-      const thumbnail = data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[0].url : "");
-      const platform = "YouTube";
-      const duration = data.duration || 0;
-      const formats = extractFormats(data, url);
-      
-      return res.json({
-        title,
-        thumbnail,
-        platform,
-        duration,
-        formats
-      });
-    } catch (error) {
-      console.error("Error executing yt-dlp, attempting native fallback parser...", error.message);
-      try {
-        const fallbackData = await fetchFallbackYouTubeMetadata(url);
-        return res.json(fallbackData);
-      } catch (fallbackError) {
-        console.error("Fallback parser failed:", fallbackError.message);
-        const errMessage = error.message || "";
-        if (errMessage.toLowerCase().includes("private")) {
-          res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
-        } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
-          res.status(403).json({ detail: "This video is age-restricted or requires account login." });
-        } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
-          res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
-        } else {
-          res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
-        }
+      const ytdlData = await fetchYtdlCoreMetadata(url);
+      return res.json(ytdlData);
+    } catch (ytdlError) {
+      console.error("ytdl-core fallback failed:", ytdlError.message);
+      const errMessage = error.message || "";
+      if (errMessage.toLowerCase().includes("private")) {
+        res.status(403).json({ detail: "This video is private. Private content cannot be downloaded." });
+      } else if (errMessage.toLowerCase().includes("age") || errMessage.toLowerCase().includes("sign in")) {
+        res.status(403).json({ detail: "This video is age-restricted or requires account login." });
+      } else if (errMessage.toLowerCase().includes("geo") || errMessage.toLowerCase().includes("country")) {
+        res.status(403).json({ detail: "This video is geoblocked and unavailable in this region." });
+      } else {
+        res.status(500).json({ detail: "Failed to retrieve video information. Verify the URL is valid and public." });
       }
     }
   }
