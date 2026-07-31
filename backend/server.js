@@ -638,11 +638,15 @@ app.get('/api/download', async (req, res) => {
 
   const userAgentStr = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
+  const proxy = await getWorkingProxy();
+  const proxyArgs = proxy ? ['-http_proxy', proxy] : [];
+
   if (ext === "mp3") {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", "audio/mpeg");
     
     const ffmpegArgs = [
+      ...proxyArgs,
       '-user_agent', userAgentStr,
       '-i', url,
       '-vn',
@@ -673,8 +677,10 @@ app.get('/api/download', async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     
     const ffmpegArgs = [
+      ...proxyArgs,
       '-user_agent', userAgentStr,
       '-i', url,
+      ...proxyArgs,
       '-user_agent', userAgentStr,
       '-i', audioUrl,
       '-c:v', 'libx264',
