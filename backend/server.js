@@ -632,16 +632,18 @@ app.get('/api/download', async (req, res) => {
   const filename = `${sanitizedTitle}.${ext}`;
   const expectedSize = (size && !isNaN(parseInt(size))) ? parseInt(size, 10) : null;
   
+  const sysFfmpeg = (process.platform !== 'win32' && fs.existsSync('/usr/bin/ffmpeg')) 
+    ? '/usr/bin/ffmpeg' 
+    : (ffmpegPath || 'ffmpeg');
+
+  const userAgentStr = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
   if (ext === "mp3") {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", "audio/mpeg");
     
-    const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
     const ffmpegArgs = [
-      '-reconnect', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '5',
-      '-headers', ffHeaders,
+      '-user_agent', userAgentStr,
       '-i', url,
       '-vn',
       '-c:a', 'libmp3lame',
@@ -650,8 +652,8 @@ app.get('/api/download', async (req, res) => {
       'pipe:1'
     ];
     
-    console.log(`Starting FFmpeg MP3 transcoding: ${ffmpegPath} ${ffmpegArgs.join(' ')}`);
-    const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs);
+    console.log(`Starting FFmpeg MP3 transcoding: ${sysFfmpeg} ${ffmpegArgs.join(' ')}`);
+    const ffmpegProcess = spawn(sysFfmpeg, ffmpegArgs);
     ffmpegProcess.stdout.pipe(res);
     
     ffmpegProcess.stderr.on('data', (data) => {
@@ -670,17 +672,10 @@ app.get('/api/download', async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", "video/mp4");
     
-    const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
     const ffmpegArgs = [
-      '-reconnect', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '5',
-      '-headers', ffHeaders,
+      '-user_agent', userAgentStr,
       '-i', url,
-      '-reconnect', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '5',
-      '-headers', ffHeaders,
+      '-user_agent', userAgentStr,
       '-i', audioUrl,
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
@@ -694,8 +689,8 @@ app.get('/api/download', async (req, res) => {
       'pipe:1'
     ];
     
-    console.log(`Starting FFmpeg download muxing: ${ffmpegPath} ${ffmpegArgs.join(' ')}`);
-    const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs);
+    console.log(`Starting FFmpeg download muxing: ${sysFfmpeg} ${ffmpegArgs.join(' ')}`);
+    const ffmpegProcess = spawn(sysFfmpeg, ffmpegArgs);
     ffmpegProcess.stdout.pipe(res);
     
     ffmpegProcess.stderr.on('data', (data) => {
