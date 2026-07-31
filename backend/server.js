@@ -635,9 +635,6 @@ app.get('/api/download', async (req, res) => {
   if (ext === "mp3") {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", "audio/mpeg");
-    if (expectedSize && expectedSize > 0) {
-      res.setHeader("Content-Length", expectedSize.toString());
-    }
     
     const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
     const ffmpegArgs = [
@@ -672,9 +669,6 @@ app.get('/api/download', async (req, res) => {
   if (audioUrl && ext === "mp4") {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", "video/mp4");
-    if (expectedSize && expectedSize > 0) {
-      res.setHeader("Content-Length", expectedSize.toString());
-    }
     
     const ffHeaders = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
     const ffmpegArgs = [
@@ -688,9 +682,7 @@ app.get('/api/download', async (req, res) => {
       '-reconnect_delay_max', '5',
       '-headers', ffHeaders,
       '-i', audioUrl,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-crf', '23',
+      '-c:v', 'copy',
       '-c:a', 'aac',
       '-map', '0:v:0',
       '-map', '1:a:0',
@@ -740,8 +732,8 @@ app.get('/api/download', async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader("Content-Type", contentType);
     
-    const contentLength = expectedSize || response.headers.get("content-length");
-    if (contentLength) {
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && !isNaN(parseInt(contentLength))) {
       res.setHeader("Content-Length", contentLength.toString());
     }
     
