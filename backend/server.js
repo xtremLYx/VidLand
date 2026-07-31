@@ -471,6 +471,13 @@ function checkProxyAlive(host, port, timeout = 1200) {
 async function getWorkingProxy() {
   if (process.env.PROXY_URL) return process.env.PROXY_URL;
   
+  // 1. Prioritize local Cloudflare WARP SOCKS5 proxy on 127.0.0.1:4001
+  const isWarpAlive = await checkProxyAlive('127.0.0.1', 4001, 500);
+  if (isWarpAlive) {
+    console.log('Using local Cloudflare WARP SOCKS5 proxy on socks5://127.0.0.1:4001');
+    return 'socks5://127.0.0.1:4001';
+  }
+
   const validPorts = [':80', ':443', ':8080', ':8000', ':8888', ':3128', ':8081'];
   let candidateProxies = [];
 
