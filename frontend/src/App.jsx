@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
+import Header from './components/Header';
+import Footer from './components/Footer';
 import './App.css';
 
 function App() {
-  const [theme, setTheme] = useState('dark');
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
+
   
   // Active tab state: 'download' (default) | 'trim'
   const [activeTab, setActiveTab] = useState('download');
@@ -21,24 +23,43 @@ function App() {
   const [cropRatio, setCropRatio] = useState('landscape');
   const [selectedFormatIndex, setSelectedFormatIndex] = useState(0);
   
+  // Scroll state to reveal 2nd section on scroll
+  const [isScrolled, setIsScrolled] = useState(false);
+
   const formRef = useRef(null);
 
-  // Initialize theme and history
-  useEffect(() => {
-    // Theme setup
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      applyTheme(savedTheme);
-    } else {
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      applyTheme(prefersDark ? 'dark' : 'light');
+  const scrollToSection = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
     }
+  };
 
-    // History setup
+  // Initialize history
+  useEffect(() => {
     const savedHistory = localStorage.getItem('fetch_history');
     if (savedHistory) {
       setHistory(JSON.parse(savedHistory));
     }
+  }, []);
+
+
+  // Window scroll listener for 2nd section visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 20) {
+        setIsScrolled(true);
+      } else {
+        setIsScrolled(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, []);
 
   // Initialize trim limits when result loads
@@ -52,15 +73,7 @@ function App() {
     }
   }, [result]);
 
-  const applyTheme = (newTheme) => {
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    setTheme(newTheme);
-  };
 
-  const toggleTheme = () => {
-    applyTheme(theme === 'dark' ? 'light' : 'dark');
-  };
 
   // Clipboard Paste helper
   const handlePaste = async () => {
@@ -207,35 +220,13 @@ function App() {
   return (
     <>
       {/* Global Glassmorphic Header */}
-      <header className="global-header">
-        <div className="nav-container">
-          <div className="logo" onClick={() => window.location.reload()} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && window.location.reload()}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="logo-symbol" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0 1 18 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5m0-5.25v5.25m0-5.25C6 5.004 6.504 4.5 7.125 4.5h9.75c.621 0 1.125.504 1.125 1.125m1.125 2.625h1.5m-1.5 0A1.125 1.125 0 0 1 18 7.125v-1.5m1.125 2.625c-.621 0-1.125.504-1.125 1.125v1.5m2.625-2.625c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125M18 5.625v5.25M7.125 12h9.75m-9.75 0A1.125 1.125 0 0 1 6 10.875M7.125 12C6.504 12 6 12.504 6 13.125m0-2.25C6 11.496 5.496 12 4.875 12M18 10.875c0 .621-.504 1.125-1.125 1.125M18 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m-12 5.25v-5.25m0 5.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125m-12 0v-1.5c0-.621-.504-1.125-1.125-1.125M18 18.375v-5.25m0 5.25v-1.5c0-.621.504-1.125 1.125-1.125M18 13.125v1.5c0 .621.504 1.125 1.125 1.125M18 13.125c0-.621.504-1.125 1.125-1.125M6 13.125v1.5c0 .621-.504 1.125-1.125 1.125M6 13.125C6 12.504 5.496 12 4.875 12m-1.5 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M19.125 12h1.5m0 0c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h1.5m14.25 0h1.5" />
-            </svg>
-            <span className="logo-text">OmniFetch</span>
-          </div>
-          <button 
-            id="theme-toggle" 
-            className="theme-toggle-btn" 
-            onClick={toggleTheme}
-            aria-label="Toggle dark or light theme"
-          >
-            {theme === 'dark' ? (
-              <svg id="theme-icon-light" className="theme-icon" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.46 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 100 2h1z" clipRule="evenodd"></path>
-              </svg>
-            ) : (
-              <svg id="theme-icon-dark" className="theme-icon" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
-              </svg>
-            )}
-          </button>
-        </div>
-      </header>
+      <Header currentPath="/" />
 
-      <main className="main-content">
-        {/* Hero Header Section */}
+
+      {/* SECTION 1: Hero & Downloader Landing Section (100% Height) */}
+      <section className="hero-landing-section">
+        <div className="hero-landing-container">
+          {/* Hero Header Section */}
         <section className="hero-section">
           <h1 className="hero-title">Video downloads,<br />refined and secure.</h1>
           <p className="hero-subtitle">Paste a YouTube link to start. High-speed memory proxy streaming, zero storage footprint, complete privacy.</p>
@@ -629,14 +620,206 @@ function App() {
             </div>
           </section>
         )}
+        </div>
+
+        {/* Scroll Indicator Prompt */}
+        <div 
+          className="scroll-indicator-btn" 
+          onClick={() => scrollToSection('seo-content-section')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && scrollToSection('seo-content-section')}
+          aria-label="Scroll to view details"
+        >
+          <span className="scroll-indicator-text">Scroll to explore</span>
+          <svg className="scroll-indicator-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M19 12l-7 7-7-7"/>
+          </svg>
+        </div>
+      </section>
+
+      {/* SECTION 2: SEO Text, Features & Footer (Appears on Scroll, disappears when back at top) */}
+      <div className={`secondary-details-section ${isScrolled ? 'is-visible' : ''}`}>
+        <main className="seo-main-content">
+          <section className="seo-content-section">
+          <div className="seo-container">
+            <article className="seo-article">
+              <h2 className="seo-heading">Best YouTube Video Downloader Online (4K, 1080p & MP3)</h2>
+              <p className="seo-text">
+                Welcome to <strong>VidLand</strong>, the premier <strong>youtube video downloader</strong> engineered to help you <strong>download youtube video free</strong> in crisp, original quality. Whether you are looking for a reliable <strong>youtube video downloader 4k</strong> for high-resolution displays, a fast <strong>youtube video downloader 1080p</strong> for offline watching, or an instant <strong>youtube video downloader mp3</strong> converter for your favorite music tracks, VidLand provides a seamless, zero-cost solution directly inside your web browser.
+              </p>
+              <p className="seo-text">
+                Unlike bloated desktop software or ad-heavy sites frequently cautioned on <strong>youtube video downloader reddit</strong> discussions, VidLand runs as a clean, high-performance <strong>youtube video downloader online</strong> web application. You never need to install software, install browser extensions, or register an account. Just paste your link, select your desired resolution, and <strong>download youtube vids</strong> instantly with ultra-fast memory proxy streaming.
+              </p>
+
+              <h2 id="features-section" className="seo-heading">Why VidLand is the Best YouTube Video Downloader</h2>
+              <div className="seo-grid">
+                <div className="seo-card">
+                  <h3 className="seo-card-title">⚡ High-Speed 4K & 1080p Downloads</h3>
+                  <p className="seo-card-desc">Save ultra-HD videos using our dedicated <strong>youtube video downloader 4k</strong> and <strong>youtube video downloader 1080p</strong> engine. Enjoy original 60FPS video quality without watermarks or quality loss.</p>
+                </div>
+                <div className="seo-card">
+                  <h3 className="seo-card-title">🎵 High Quality MP3 Converter</h3>
+                  <p className="seo-card-desc">Convert music videos, podcasts, and interviews into standalone audio files using our <strong>youtube video downloader mp3</strong> tool. Extract 320kbps and 128kbps audio streams in seconds.</p>
+                </div>
+                <div className="seo-card">
+                  <h3 className="seo-card-title">📱 Download YouTube Video to iPhone & Android</h3>
+                  <p className="seo-card-desc">Wondering how to <strong>download youtube video to iphone</strong> without iTunes? VidLand works directly in Safari on iOS and Chrome on Android, saving media straight to your Files app.</p>
+                </div>
+                <div className="seo-card">
+                  <h3 className="seo-card-title">✂️ Built-in Video Trimmer & Shorts Cutter</h3>
+                  <p className="seo-card-desc">Trim long YouTube videos into custom clips or crop them into 9:16 vertical ratio formats for TikTok, YouTube Shorts, and Instagram Reels with precise start and end times.</p>
+                </div>
+              </div>
+
+              <h2 id="how-it-works-section" className="seo-heading">How to Download YouTube Videos Free on Desktop & Mobile</h2>
+              <p className="seo-text">Follow these simple steps to <strong>download youtube video</strong> files onto any device:</p>
+              <ol className="seo-steps-list">
+                <li><strong>Copy YouTube URL:</strong> Open YouTube on your desktop or mobile app and copy the link of the video you wish to save.</li>
+                <li><strong>Paste into VidLand:</strong> Paste the URL into the search bar above and click <strong>Fetch Video</strong>.</li>
+                <li><strong>Select Format & Quality:</strong> Choose from 4K, 1080p, 720p MP4, or MP3 audio only.</li>
+                <li><strong>Click Download:</strong> Your browser will immediately start downloading the media file. If you want to <strong>download youtube video to iphone</strong>, tap the download arrow in Safari and save to Files or Camera Roll.</li>
+              </ol>
+
+              <h2 id="trust-section" className="seo-heading">Company, Security & Legal Information</h2>
+              <p className="seo-text">Explore VidLand's architecture, zero-log privacy commitments, terms of service, and direct support desk:</p>
+              <div className="seo-cards-grid trust-cards-grid">
+                <a href="/privacy" className="trust-card">
+                  <div className="trust-card-badge">Privacy</div>
+                  <h3 className="seo-card-title">🔒 Privacy Policy</h3>
+                  <p className="seo-card-desc">Read how our Zero-Log Memory Proxy Streaming protects user data with zero disk storage, no account requirement, and full anonymity.</p>
+                  <span className="trust-card-link">View Privacy Policy →</span>
+                </a>
+
+                <a href="/about" className="trust-card">
+                  <div className="trust-card-badge">About</div>
+                  <h3 className="seo-card-title">ℹ️ About VidLand</h3>
+                  <p className="seo-card-desc">Discover our mission to deliver a museum-grade 4K YouTube video downloader and MP3 converter without ads or bloatware.</p>
+                  <span className="trust-card-link">Learn About Us →</span>
+                </a>
+
+                <a href="/terms" className="trust-card">
+                  <div className="trust-card-badge">Legal</div>
+                  <h3 className="seo-card-title">⚖️ Terms & Conditions</h3>
+                  <p className="seo-card-desc">Understand our terms of service, fair use policy for personal educational downloading, copyright safety, and user guidelines.</p>
+                  <span className="trust-card-link">Read Terms & Conditions →</span>
+                </a>
+
+                <a href="/contact" className="trust-card">
+                  <div className="trust-card-badge">Support</div>
+                  <h3 className="seo-card-title">✉️ Contact Us</h3>
+                  <p className="seo-card-desc">Get direct technical support, submit bug reports, suggest new features, or send DMCA copyright inquiries to our support desk.</p>
+                  <span className="trust-card-link">Get in Touch →</span>
+                </a>
+              </div>
+
+              <h2 id="faq-section" className="seo-heading">Frequently Asked Questions (FAQ)</h2>
+              <div className="seo-faq-list">
+                <details className="seo-faq-accordion" open>
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">How to download a youtube video?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">To <strong>download a youtube video</strong>, copy the video URL from YouTube, paste it into VidLand's search bar, click <strong>Fetch Video</strong>, select your preferred quality (4K, 1080p, 720p, or MP3 audio), and click <strong>Download</strong>.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">How to download youtube video to computer?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">To <strong>download youtube video to computer</strong> (Windows PC, Mac, or Linux), open your web browser, navigate to VidLand, paste the YouTube link, select your desired resolution, and click Download. The file will save directly to your computer's Downloads folder.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">How to download a video from youtube for free?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">You can <strong>download a video from youtube</strong> for free using VidLand's online web tool. It is 100% free with no account registration, no hidden fees, and unlimited downloads.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">How to download video from youtube on mobile or iPhone?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">To <strong>download video from youtube</strong> on an iPhone or Android phone, copy the link from the YouTube app, open Safari or Chrome, visit VidLand, paste the link, and tap Download to save the file to your Files app or Camera Roll.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">What is the best youtube video downloader?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">VidLand is widely recognized as the <strong>best youtube video downloader</strong> online because it delivers ultra-fast 4K and 1080p downloads, 320kbps MP3 conversion, video trimming, zero ads, and respects user privacy without desktop software.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">What is a safe youtube video downloader?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">A <strong>safe youtube video downloader</strong> is one that runs entirely in your web browser without requiring software downloads, browser extensions, or account sign-ups. VidLand is 100% safe, ad-free, and handles media streaming securely in memory.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">What is a good youtube video downloader for high quality MP4 & MP3?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">A <strong>good youtube video downloader</strong> provides original high-resolution downloads up to 4K 60fps and crystal-clear audio extraction. VidLand is a <strong>good youtube video downloader</strong> supporting 4K, 2K, 1080p, 720p MP4, and high bitrate MP3 streams.</p>
+                  </div>
+                </details>
+
+                <details className="seo-faq-accordion">
+                  <summary className="seo-faq-summary">
+                    <span className="seo-faq-q">How to download youtube shorts video downloader clips?</span>
+                    <svg className="seo-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </summary>
+                  <div className="seo-faq-answer-wrapper">
+                    <p className="seo-faq-a">To <strong>download youtube shorts video downloader</strong> clips, copy the URL of any YouTube Shorts video, paste it into VidLand, and choose full video download or use our built-in Shorts-Cutter tool to trim and crop the vertical clip for TikTok or Instagram Reels.</p>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </div>
+        </section>
       </main>
 
-      <footer className="global-footer">
-        <div className="footer-container">
-          <p className="footer-legal">Designed in California. OmniFetch handles downloads strictly via memory proxy. No user media is saved on disk.</p>
-        </div>
-      </footer>
-    </>
+      <Footer />
+    </div>
+  </>
+
   );
 }
 
